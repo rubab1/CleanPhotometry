@@ -16,7 +16,7 @@ parameters as well as the required and optional input files.
 # Background
 This tool is built as part of the WFIRST simulations, analysis and 
 recommendation pipeline under development at the University for Washington 
-- Seattle primarily for carrying our Nearby Galaxies projects. However, its 
+primarily for carrying our Nearby Galaxies projects. However, its 
 functionalities are broadly reusable for a varity of tasks, as summarized 
 toward the bottom of this page.
 
