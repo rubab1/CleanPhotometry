@@ -68,13 +68,13 @@ primarily concern item 4 below.
 
 2. Prepare the data for classification ( prep_data() )
  - Clean and validate output data ( validate_output() )
- -- Remove measurements with unphysical values, such as negative countrate
- -- Remove least informative entries, such as magnitude errors >0.5 (log scale)
- -- Remove missing value indicators such as +/- 9.99
+  - Remove measurements with unphysical values, such as negative countrate
+  - Remove least informative entries, such as magnitude errors >0.5 (log scale)
+  - Remove missing value indicators such as +/- 9.99
  - Create Pandas Dataframes for input source lists and output source list 
    including quality parameters ( pack_input(), pack_output() )
  - Label output data entries ( label_output() )
- -- Match each remaining output entry with the closest valid (<valid_mag)
+  - Match each remaining output entry with the closest valid (<valid_mag)
     input entry within matching radius specified by 'tol'. Those matched 
     to point source input are labeled '1', everythinb else get '0' label.
     Optionally: use sky_soordinates from the simulated images since the 
@@ -87,14 +87,14 @@ primarily concern item 4 below.
    use cases and to avoid over-cleaning of data
  - Inititate, e.g., DecisionTreeClassifier(max_depth=4, min_samples_split=50,
                                             min_samples_leaf=10)
- -- Optimized parameters. Greater depth does not help
- -- RandomForest and AdaBoost did not imporve performance
+  - Optimized parameters. Greater depth does not help
+  - RandomForest and AdaBoost did not imporve performance
  - Do train/test split for specified test_size, fit the model and predict 
    labels for "test" dataset.
  - Evaluate the classification model
-  -- Score the classifier for both classes and each class separately.
-  -- Manually calculate Precision, Recall, Specficity etc. as sanity check.
-  -- Determine feature importances
+   - Score the classifier for both classes and each class separately.
+   - Manually calculate Precision, Recall, Specficity etc. as sanity check.
+   - Determine feature importances
  - Produce new labels for *all* output entries, both train and test. This is 
    to enable the next step, which examines practical implications of using the 
    model.
@@ -127,6 +127,14 @@ a conservative implementation of the old 'outlier removal' implementation
 can be used to create custom train/test datasets. The "stars" class can then 
 be gradually broadened up to some predefined stooping criteria.
 
+A more general enhancement would be classifying based on features in multiple
+filters, However, two distinct complications need to be resolved. First, 
+even with feature scaling, the distribution of the various quality 
+parameters are and the information they encapsulate are very different and 
+often causally related. Second, same features in different filters are by 
+definition highly correlated. As such, multi-filter classification asymptotes 
+to the outliers removal solution, albeit faster.
+
 # Related Repositories
 
 [Pipeline Backend Development](https://github.com/rubab1/WINGS-Pipeline_dev)
@@ -140,5 +148,3 @@ be gradually broadened up to some predefined stooping criteria.
 [WebbPSF](https://github.com/spacetelescope/webbpsf)
 
 [STIPS](https://github.com/spacetelescope/STScI-STIPS)
-
-
