@@ -23,10 +23,10 @@ rubab@uw.edu
 
 import time, argparse, graphviz, matplotlib
 
-#matplotlib.use('Agg')
+matplotlib.use('Agg')
 from matplotlib import cm
 from matplotlib import pyplot as plt
-#plt.ioff()
+plt.ioff()
 
 import numpy as np
 import pandas as pd
@@ -124,6 +124,7 @@ def clean_all(filename='10_10_phot.txt',
                           test_size=test_size,
                           valid_mag=valid_mag,
                           tol=tol,
+                          fileroot=fileroot,
                           opt=opt,
                           clf=clf)
     
@@ -144,6 +145,7 @@ def classify(out_DF,out_LAB,
              test_size=0.9,
              valid_mag=30,
              tol=5,
+             fileroot='',
              opt={'evaluate':True,
                   'summary':True,
                   'tree':True},
@@ -185,7 +187,7 @@ def classify(out_DF,out_LAB,
                                        class_names=['other','point'],
                                        max_depth=3)
             graph = graphviz.Source(dot_data)
-            graph.render(filt+'_tree')
+            graph.render(fileroot+filt+'_tree')
             
         new_labels.append(clf.predict(features))
         
@@ -201,9 +203,9 @@ def read_data(filename='10_10_phot.txt',fileroot='',filters=filters):
     Return arrays of AstroPy tables for input and numpy arrays for output
     ordered by corresponding filternames.
     '''
-    input_data = [ascii.read(filt+'_stips.txt',format='ipac')
+    input_data = [ascii.read(fileroot+filt+'_stips.txt',format='ipac')
                   for filt in filters]
-    output_data  = np.loadtxt(filename)
+    output_data  = np.loadtxt(fileroot+filename)
     return input_data,output_data
 
 
