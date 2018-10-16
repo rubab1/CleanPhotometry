@@ -1,47 +1,32 @@
 #! /usr/bin/env python
 '''
-Usage:
-./phot_cull.py phot
+The clean_photometry.py script uses supervised classification techniques 
+to identify stars from noisy astronomical catalogs containing stars,
+galaxies and noise from many different sources. 
 
-1. Run Dolphot to produce "phot":
+With all dependencies installed (python3, scikit-learn, Pandas, NumPy, 
+SciPy, AstroPy, Matplotlib, graphviz etc.) the simplest use case is:
 
-mv dwarf_full_Z.fits Z087.fits
-mv dwarf_full_Y.fits Y106.fits
-mv dwarf_full_H.fits H158.fits  
+./clean_photomtry.py $path/filename.phot
 
-wfirstmask -exptime=10000 -rdnoise=41.73 Z087.fits
-wfirstmask -exptime=10000 -rdnoise=41.73 Y106.fits
-wfirstmask -exptime=10000 -rdnoise=41.73 H158.fits
+where filename.phot is the raw DOLPHOT photomtery output. 
 
-splitgroups Z087.fits
-splitgroups Y106.fits 
-splitgroups H158.fits 
+This tool is built as part of the WFIRST simulations, analysis and 
+recommendation pipeline for carrying out Nearby Galaxies projects. 
+The current implementation requires STIPS simulation input catalogs
+and  optionally uses STIPS simulated images.
 
-calcsky Z087.chip1 15 35 -64 2.25 2.00
-calcsky Y106.chip1 15 35 -64 2.25 2.00
-calcsky H158.chip1 15 35 -64 2.25 2.00
-
-nice dolphot phot > phot.log &
-
-
-2. Copy STIPS input files:
-
-cp Mixed_dwarf_full_Z_observed_WFIRST-WFI.txt Z087_stips.txt
-cp Mixed_dwarf_full_Y_observed_WFIRST-WFI.txt Y106_stips.txt
-cp Mixed_dwarf_full_H_observed_WFIRST-WFI.txt H158_stips.txt
-
-
-3. Run this script 
-./phot_cull.py phot
-
+- Rubab Khan
+rubab@uw.edu
 
 '''
+
 import time, argparse, graphviz, matplotlib
 
-matplotlib.use('Agg')
+#matplotlib.use('Agg')
 from matplotlib import cm
 from matplotlib import pyplot as plt
-plt.ioff()
+#plt.ioff()
 
 import numpy as np
 import pandas as pd
@@ -57,9 +42,24 @@ from astropy import units as u
 from astropy import wcs
 from astropy.coordinates import SkyCoord, match_coordinates_sky
 
+'''
+Therese parameters are used throughout the code:
+
+feature_names: DOLPHOT quality parameters to use for 
+training Machine Learning models. 
+
+filters: WFIRST filters used in the simulation.
+
+AB_Vega: Offsets between AB and Vega magnitude systems
+
+fits_files, ref_fits, use_radec: Simulated images may 
+be misaligned by design to emulate real observational
+conditions.
+
+'''
 
 #feature_names=['err',Count','SNR','Sharpness','Roundness','Crowding']
-feature_names=['err','SNR','Sharpness','Roundness']
+feature_names=['err','SNR','Sharpness','Crowding']
 
 # filter names
 filters    = np.array(['Z087','Y106','J129','H158','F184'])
@@ -89,6 +89,13 @@ def clean_all(filename='10_10_phot.txt',
                'summary':True,
                'plots':True,
                'tree':True}):
+    '''
+    Top level wrapper to read data, clean data, train/test/evaluate
+    classification model, make figure and display evaluation report
+    
+    Calls read_data(), prep_data(), classify() and makePlots().
+    '''
+    
     fileroot,filename = get_fileroot(filename)
 
     if use_radec:
@@ -141,6 +148,20 @@ def classify(out_DF,out_LAB,
                   'summary':True,
                   'tree':True},
              clf = DecisionTreeClassifier()):
+    '''
+    High level wrapper to build and evaluate classification models
+    for all bands and return new labels for the entire dataset.
+    
+    For each filter:
+    - Extract features and label
+    - Split into training and testing dataset
+    - Train models, predict label for test set
+    - optional: evaluate model performance, make figures,
+                save the 'tree', and display report
+    - Re-label the entire dataset: for qualitative evaluation 
+    
+    return an array containing new labels in each filter
+    '''
 
     new_labels = []
     
@@ -172,6 +193,14 @@ def classify(out_DF,out_LAB,
 
 
 def read_data(filename='10_10_phot.txt',fileroot='',filters=filters):
+    '''
+    Read in the raw fata files:
+    - Input: sythetic photometry file for image generation, IPAC format
+    - Output: DOLPHOT measured raw photometry, ASCII format
+    
+    Return arrays of AstroPy tables for input and numpy arrays for output
+    ordered by corresponding filternames.
+    '''
     input_data = [ascii.read(filt+'_stips.txt',format='ipac')
                   for filt in filters]
     output_data  = np.loadtxt(filename)
@@ -181,6 +210,16 @@ def read_data(filename='10_10_phot.txt',fileroot='',filters=filters):
 def prep_data(input_data,output_data,sky_coord=sky_coord,
               filters=filters,use_radec=False,
               tol=5,valid_mag=30,ref_fits=0):
+    '''
+    Prepare the data for classification. The output data is now cleaned 
+    to exclude low information entries and also labeled based on location 
+    of detection.
+
+    Return 3 arrays ordered by corresponding filternames:
+    - First array for input data in pandas data frames
+    - Second array for cleaned output data in pandas data frames
+    - Third array for labels of output data in numpy arrays
+    '''
     nfilt = filters.size
     xy         = output_data[:,2:4].T
     Count      = output_data[:,range(13,13+13*nfilt,13)].T
@@ -216,25 +255,47 @@ def prep_data(input_data,output_data,sky_coord=sky_coord,
 
 
 def validate_output(err,count,snr,shr,rnd,crd):
+    '''
+    Clean and validate output data
+    - Remove measurements with unphysical values, such as negative countrate
+    - Remove low information entries, such as magnitude errors >0.5 & SNR <1
+    - Remove missing value indicators such as +/- 9.99
+    '''
     return (err<0.5)&(count>=0)&(snr>=1)&(crd!=9.999)&\
         (shr!=9.999)&(shr!=-9.999)&(rnd!=9.999)&(rnd!=-9.999)
 
 
 def pack_input(data):
+    '''return Pandas Dataframes for input AstroPy tables'''
     return pd.DataFrame({'x':data['x'],'y':data['y'],\
                          'm':data['vegamag'],'type':data['type']})
 
 
 def pack_output(xy,mags,errs,count,snr,shr,rnd,crd,t):
+    '''
+    return Pandas Dataframes for output numpy arrays including
+    all quality parameter
+    '''
     return pd.DataFrame({'x':xy[0][t],'y':xy[1][t],'mag':mags[t],'err':errs[t],
                         'Count':count[t],'SNR':snr[t],'Sharpness':shr[t],
                          'Roundness':rnd[t],'Crowding':crd[t]})
 
 
 def label_output(in_df,out_df,tol=5,valid_mag=30,
-                 radec={'opt':False,
-                        'wcs1':'',
-                        'wcs2':''}):
+                 radec={'opt':False,'wcs1':'','wcs2':''}):
+    '''
+    Label output data entries and return the labels as numpy array.
+    
+    Match each remaining output entry with the closest input entry 
+    within matching radius specified by 'tol' that are brighter than 
+    specified magnitude (valid_mag).
+    
+    Those matched to point source input are labeled '1', 
+    everything else get '0' label.
+    
+    Optionally, use sky_soordinates from the simulated images since 
+    the images may not be aligned to each other. 
+    '''
     X,Y = in_df['x'].values,in_df['y'].values
     typ_in = in_df['type'].values
     mags = in_df['m'].values
@@ -248,10 +309,14 @@ def label_output(in_df,out_df,tol=5,valid_mag=30,
     return typ_bin
 
 
-'''Pick sources added in both bands as same object types'''
-def input_pair(df,i,j,radec={'opt':False,
-                             'wcs1':'',
-                             'wcs2':''}):
+def input_pair(df,i,j,radec={'opt':False,'wcs1':'','wcs2':''}):
+    '''
+    Pick sources added in both bands as same object types
+    
+    return data dictionary containing the two input magnitudes 
+    (m1_in, m2_in), coordinates (X, Y) and input source type
+    (typ_in)
+    '''
     m1_in,m2_in,X1,Y1,X2,Y2 = df[i]['m'].values,df[j+1]['m'].values,\
         df[i]['x'].values,df[i]['y'].values,\
         df[j+1]['x'].values,df[j+1]['y'].values
@@ -277,6 +342,14 @@ def input_pair(df,i,j,radec={'opt':False,
 
 '''Recovered source photometry and quality params'''
 def output_pair(df,labels,i,j):
+    '''
+    Pick sources detected in both bands as same object types
+    
+    return data dictionary containing the two output magnitudes (mag) 
+    coordinates (xy), all quality parameters (err,snr,crd,rnd,shr)
+    and labels (lbl). Each dictionary item is has two elements for 
+    two filters (xy has x and y).
+    '''
     X1,Y1,X2,Y2 = df[i]['x'].values,df[i]['y'].values,\
                   df[j+1]['x'].values,df[j+1]['y'].values
     t2 = matchLists(0.1,X1,Y1,X2,Y2)
@@ -295,10 +368,13 @@ def output_pair(df,labels,i,j):
     return dict(zip(nms,K))
 
 
-def clean_pair(inPair,outPair,tol=5,
-               radec={'opt':False,
-                      'wcs1':'',
-                      'wcs2':''}):
+def clean_pair(inPair,outPair,tol=5,radec={'opt':False,'wcs1':'','wcs2':''}):
+    '''
+    Pick sources added and detected in both bands as same object types
+    
+    return data dictionary containing the two output magnitudes 
+    (m1, m2), coordinates (X, Y) and output source type (typ_out)
+    '''
     X1,Y1,typ_in = inPair['X'],inPair['Y'],inPair['typ_in']
     X2,Y2 = outPair['xy'][0],outPair['xy'][1]
     m1_out,m2_out = outPair['mag'][0],outPair['mag'][1]
@@ -311,10 +387,12 @@ def clean_pair(inPair,outPair,tol=5,
     return clean_pair
 
 
-''' Quick match using cKDTree
-return index of 2nd list at coresponding position in the 1st 
-return -1 if no match is found within matching radius (tol)'''
 def matchLists(tol,x1,y1,x2,y2):
+    '''
+    Match X and Y coordinates using cKDTree
+    return index of 2nd list at coresponding position in the 1st 
+    return -1 if no match is found within matching radius (tol)
+    '''
     d1 = np.empty((x1.size, 2))
     d2 = np.empty((x2.size, 2))
     d1[:,0],d1[:,1] = x1,y1
@@ -326,6 +404,11 @@ def matchLists(tol,x1,y1,x2,y2):
 
 
 def matchCats(tol,ra1,dec1,ra2,dec2):
+    '''
+    Match astronomical coordinates using SkyCoord
+    return index of 2nd list at coresponding position in the 1st 
+    return -1 if no match is found within matching radius (tol)
+    '''
     c1 = SkyCoord(ra=ra1*u.degree, dec=dec1*u.degree)
     c2 = SkyCoord(ra=ra2*u.degree, dec=dec2*u.degree)
     in1,sep,tmp = match_coordinates_sky(c1,c2,storekdtree=False)
@@ -335,10 +418,18 @@ def matchCats(tol,ra1,dec1,ra2,dec2):
     return in1
 
 
-'''Match input to recovered and retun recovered label'''
-def match_in_out(tol,X,Y,x,y,typ_in,radec={'opt':False,
-                                           'wcs1':'',
-                                           'wcs2':''}):
+def match_in_out(tol,X,Y,x,y,typ_in,
+                 radec={'opt':False,'wcs1':'','wcs2':''}):
+    '''
+    Match input coordnates to recovered coordinates picking the 
+    closest matched item.
+    
+    return index of output entry at coresponding position in the 
+    input list and source type of the matching input
+    
+    return -1 as the index if no match is found and source type 
+    as 'other' (not point source)
+    '''
     if radec['opt']:
         ra1,dec1 = xy_to_wcs(np.array([X,Y]).T,radec['wcs1'])
         ra2,dec2 = xy_to_wcs(np.array([x,y]).T,radec['wcs2'])
@@ -357,6 +448,13 @@ def match_in_out(tol,X,Y,x,y,typ_in,radec={'opt':False,
 
 
 def print_report(filt,test_labels,pred_labels,feat_nms,feat_imp,short_rep=True):
+    '''
+    Evaluate the classification model
+    - Score the classifier for all classes and each class separately
+    - Manually calculate Precision, Recall and Specficity 
+    - Display the values along with feature importances
+    '''
+    
     score1 = accuracy_score(test_labels,pred_labels)
     score2 = accuracy_score(test_labels[test_labels==0],pred_labels[test_labels==0])
     score3 = accuracy_score(test_labels[test_labels==1],pred_labels[test_labels==1])
@@ -385,6 +483,11 @@ def makePlots(in_DF,out_DF,new_labels,
               tol=5,ref_fits=0,
               use_radec=False,
               show_plot=False):
+    '''
+    Produce figures and text to qualitatively evaluate practicality 
+    of the classification model for the intended use case of maximizing 
+    star identification in realistic catalogs
+    '''
     paired_in    = lambda a,b,c: input_pair(in_DF,a,b,c)
     paired_out   = lambda a,b: output_pair(out_DF,new_labels,a,b)
 
@@ -405,13 +508,14 @@ def makePlots(in_DF,out_DF,new_labels,
                        radec=radec2,show_plot=show_plot)
     return print('\n')
 
-'''CMDs and quality param plotting'''
+
 def make_plots(all_in=[],all_out=[],clean_out=[],\
                filt1='',filt2='',AB_Vega1=0,AB_Vega2=0,
                fileroot='',tol=5,
                opt=['input','output','clean','diff'],
                radec={'opt':False,'wcs1':'','wcs2':''},
                show_plot=False):
+    '''Produce color-magnitude diagrams and systematic offsets'''
     print('\nFilters {:s} and {:s}:'.format(filt1,filt2))
     plot_me = lambda a,b,st,ot,ttl,pre,post: \
               plot_cmd(a,b,filt1=filt1,filt2=filt2,\
@@ -466,11 +570,11 @@ def make_plots(all_in=[],all_out=[],clean_out=[],\
     return print('\n')
 
 
-'''Make CMD'''
 def plot_cmd(m1,m2,e1=[],e2=[],filt1='',filt2='',stars=[],other=[],\
              fileroot='',outfile='test',fmt='png',\
              xlim1=-1.5,xlim2=3.5,ylim1=29.5,ylim2=20.5,n=4,
              title='',show_plot=False):
+    '''Produce color-magnitude diagrams'''
     m1m2 = m1-m2
     plt.rc("font", family='serif', weight='bold')
     plt.rc("xtick", labelsize=15); plt.rc("ytick", labelsize=15)
@@ -497,11 +601,11 @@ def plot_cmd(m1,m2,e1=[],e2=[],filt1='',filt2='',stars=[],other=[],\
     return plt.close()
 
 
-'''Simple Plotting'''
 def plot_xy(x,y,xlabel='',ylabel='',title='',stars=[],other=[],\
             xlim1=-1,xlim2=1,ylim1=-7.5,ylim2=7.5,\
             fileroot='',outfile='test',fmt='png',n=4,
             show_plot=False):
+    '''Custom scatterplot maker'''
     plt.rc("font", family='serif', weight='bold')
     plt.rc("xtick", labelsize=15); plt.rc("ytick", labelsize=15)
     fig = plt.figure(1, ((10,10)))
@@ -523,8 +627,9 @@ def plot_xy(x,y,xlabel='',ylabel='',title='',stars=[],other=[],\
     return plt.close()
 
 
-'''Overplot hess diagram for densest regions'''
 def plotHess(color,mag,binsize=0.1,threshold=25):
+    '''Overplot hess diagram for densest regions 
+    of a scatterplot'''
     if not len(color)>threshold:
         return color,mag
     mmin,mmax = np.amin(mag),np.amax(mag)
@@ -555,12 +660,14 @@ def plotHess(color,mag,binsize=0.1,threshold=25):
 
 
 def xy_to_wcs(xy,_w):
+    '''Convert pixel coordinates (xy) to astronomical
+    coordinated (RA and DEC)'''
     _radec = _w.wcs_pix2world(xy,1)
     return _radec[:,0],_radec[:,1]
 
 
-'''Split filepath and filename'''
 def get_fileroot(filename):
+    '''return path to a file and filename'''
     if '/' in filename:
         tmp = filename.split('/')[-1]
         fileroot = filename[:-len(tmp)]
@@ -569,8 +676,9 @@ def get_fileroot(filename):
         fileroot = ''
     return fileroot, filename
 
-'''Argument parser template'''
+
 def parse_all():
+    '''Argument parser for command line use'''
     parser = argparse.ArgumentParser()
     parser.add_argument('filenames', nargs='+',help='Photomtery file names')
     parser.add_argument('--RADIUS', '-tol', type=float, dest='tol', default=5, help='Matching radius in pixels')

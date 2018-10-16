@@ -16,7 +16,7 @@ parameters as well as the required and optional input files.
 # Background
 This tool is built as part of the WFIRST simulations, analysis and 
 recommendation pipeline under development at the University for Washington 
-primarily for carrying our Nearby Galaxies projects. However, its 
+primarily for carrying out Nearby Galaxies projects. However, its 
 functionalities are broadly reusable for a varity of tasks, as summarized 
 toward the bottom of this page.
 
@@ -76,7 +76,7 @@ primarily concern item 4 below.
  - Label output data entries ( label_output() )
   - Match each remaining output entry with the closest valid (<valid_mag)
     input entry within matching radius specified by 'tol'. Those matched 
-    to point source input are labeled '1', everythinb else get '0' label.
+    to point source input are labeled '1', everything else get '0' label.
     Optionally: use sky_soordinates from the simulated images since the 
     images may not be aligned to each other. [(match_in_out(), match_lists(),
     match_cats() etc.)
