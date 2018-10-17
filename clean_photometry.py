@@ -23,10 +23,10 @@ rubab@uw.edu
 
 import time, argparse, graphviz, matplotlib
 
-matplotlib.use('Agg')
+#matplotlib.use('Agg')
 from matplotlib import cm
 from matplotlib import pyplot as plt
-plt.ioff()
+#plt.ioff()
 
 import numpy as np
 import pandas as pd
@@ -122,8 +122,6 @@ def clean_all(filename='10_10_phot.txt',
                           filters=filters,
                           feature_names=feature_names,
                           test_size=test_size,
-                          valid_mag=valid_mag,
-                          tol=tol,
                           fileroot=fileroot,
                           opt=opt,
                           clf=clf)
@@ -143,8 +141,6 @@ def classify(out_DF,out_LAB,
              filters=filters,
              feature_names=feature_names,
              test_size=0.9,
-             valid_mag=30,
-             tol=5,
              fileroot='',
              opt={'evaluate':True,
                   'summary':True,
@@ -235,7 +231,7 @@ def prep_data(input_data,output_data,sky_coord=sky_coord,
     in_df,out_df,labels = [],[],[]
     
     for i in range(nfilt):
-        in_df.append(pack_input(input_data[i]))
+        in_df.append(pack_input(input_data[i],valid_mag=valid_mag))
         
         t = validate_output(mag_errors[i],
                             Count[i],SNR[i],
@@ -267,10 +263,14 @@ def validate_output(err,count,snr,shr,rnd,crd):
         (shr!=9.999)&(shr!=-9.999)&(rnd!=9.999)&(rnd!=-9.999)
 
 
-def pack_input(data):
-    '''return Pandas Dataframes for input AstroPy tables'''
-    return pd.DataFrame({'x':data['x'],'y':data['y'],\
-                         'm':data['vegamag'],'type':data['type']})
+def pack_input(data,valid_mag=30):
+    '''
+    return Pandas Dataframes for input AstroPy tables containing 
+    sources that are brighter than specified magnitude (valid_mag)
+    '''
+    t = data['vegamag'] < valid_mag
+    return pd.DataFrame({'x':data['x'][t],'y':data['y'][t],\
+                         'm':data['vegamag'][t],'type':data['type'][t]})
 
 
 def pack_output(xy,mags,errs,count,snr,shr,rnd,crd,t):
@@ -372,7 +372,9 @@ def output_pair(df,labels,i,j):
 
 def clean_pair(inPair,outPair,tol=5,radec={'opt':False,'wcs1':'','wcs2':''}):
     '''
-    Pick sources added and detected in both bands as same object types
+    Re-classify sources detected in both bands as stars. Change detected 
+    source type from 'star' to 'other' if their location do not match to
+    that of a star added in both bands as stars
     
     return data dictionary containing the two output magnitudes 
     (m1, m2), coordinates (X, Y) and output source type (typ_out)
@@ -569,6 +571,8 @@ def make_plots(all_in=[],all_out=[],clean_out=[],\
         stars,other = typ_out=='point',typ_out!='point'
         print('Stars: {:d}  Others: {:d}'.format(int(np.sum(stars)),int(np.sum(other))))
         plot_me(m1,m2,stars,other,'Cleaned CMD','clean','clean')        
+        rr,fr = get_stat(all_in['typ_in'],clean_out['typ_out'])
+        print('Recovery Rate:\t {:.2f}\nFalse Rate: \t {:.2f}\n'.format(rr,fr))
     return print('\n')
 
 
@@ -666,6 +670,16 @@ def xy_to_wcs(xy,_w):
     coordinated (RA and DEC)'''
     _radec = _w.wcs_pix2world(xy,1)
     return _radec[:,0],_radec[:,1]
+
+
+def get_stat(typ_in,typ_out):
+    ''' Return recovery rate and false rate for stars'''
+    all_in, all_recov = len(typ_in), len(typ_out)
+    stars_in = len(typ_in[typ_in=='point'])
+    stars_recov = len(typ_out[typ_out=='point'])
+    recovery_rate = (stars_recov / stars_in)
+    false_rate = 1 - (stars_recov / all_recov)
+    return recovery_rate,false_rate
 
 
 def get_fileroot(filename):
