@@ -1,39 +1,23 @@
 #! /usr/bin/env python
 '''
-Usage:
-./phot_cull.py phot
+The clean_photometry.py script uses recursive outlier rejection 
+to identify stars from noisy astronomical catalogs containing stars,
+galaxies and noise from many different sources. 
 
-1. Run Dolphot to produce "phot":
+With all dependencies installed (python3, Pandas, NumPy, 
+SciPy, AstroPy, Matplotlib etc.) the simplest use case is:
 
-mv dwarf_full_Z.fits Z087.fits
-mv dwarf_full_Y.fits Y106.fits
-mv dwarf_full_H.fits H158.fits  
+./clean_photomtry.py $path/filename.phot
 
-wfirstmask -exptime=10000 -rdnoise=41.73 Z087.fits
-wfirstmask -exptime=10000 -rdnoise=41.73 Y106.fits
-wfirstmask -exptime=10000 -rdnoise=41.73 H158.fits
+where filename.phot is the raw DOLPHOT photomtery output. 
 
-splitgroups Z087.fits
-splitgroups Y106.fits 
-splitgroups H158.fits 
+This tool is built as part of the WFIRST simulations, analysis and 
+recommendation pipeline for carrying out Nearby Galaxies projects. 
+The current implementation requires STIPS simulation input catalogs
+and  optionally uses STIPS simulated images.
 
-calcsky Z087.chip1 15 35 -64 2.25 2.00
-calcsky Y106.chip1 15 35 -64 2.25 2.00
-calcsky H158.chip1 15 35 -64 2.25 2.00
-
-nice dolphot phot > phot.log &
-
-
-2. Copy STIPS input files:
-
-cp Mixed_dwarf_full_Z_observed_WFIRST-WFI.txt Z087_stips.txt
-cp Mixed_dwarf_full_Y_observed_WFIRST-WFI.txt Y106_stips.txt
-cp Mixed_dwarf_full_H_observed_WFIRST-WFI.txt H158_stips.txt
-
-
-3. Run thi script 
-./phot_cull.py phot
-
+- Rubab Khan
+rubab@uw.edu
 
 '''
 import time, argparse, concurrent.futures, matplotlib
@@ -53,12 +37,6 @@ from os import cpu_count
 '''Create worker pools'''
 cpu_pool = concurrent.futures.ProcessPoolExecutor(max_workers=cpu_count())
 
-
-'''WFI Filters and AB-Vega zeropoint differences'''
-filters   = np.array(['Z087','Y106','J129','H158','F184'])
-AB_Vega   = np.array([0.487,  0.653, 0.958, 1.287, 1.552])
-fits_files = ["sim_1_0.fits","sim_2_0.fits","sim_3_0.fits","sim_4_0.fits","sim_5_0.fits"]
-ref_fits   = int(3)
 
 '''
 Therese parameters are used throughout the code:
